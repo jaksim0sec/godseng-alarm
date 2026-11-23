@@ -95,9 +95,8 @@
       APPS.forEach(a => {
         if (typeof usage[a.id] === 'number') a.mins = usage[a.id];
       });
+      // Keep the original view and scroll position intact on detail/insight pages.
       if (cur === 's-home') renderHome();
-      if (cur === 's-insight') openInsight();
-      if (cur === 's-detail' && typeof dId !== 'undefined' && dId) openDetail(dId);
     } catch (error) {
       console.warn('Usage refresh failed', error);
     }
