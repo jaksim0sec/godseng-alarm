@@ -136,8 +136,8 @@ public final class MonitorService extends Service {
     private void evaluate() {
         if (!MainActivity.hasUsagePermission(this)) return;
         String pkg = UsageEngine.currentForeground(this);
-        String category = UsageEngine.classify(this, pkg);
-        if (getPackageName().equals(pkg)) category = null;
+        // State keys now are real package IDs, not predefined category names.
+        String category = getPackageName().equals(pkg) ? null : pkg;
         if (lastCategory != null && !lastCategory.equals(category)) {
             resetStage(lastCategory);
             if (overlay != null) overlay.dismiss();
@@ -159,7 +159,7 @@ public final class MonitorService extends Service {
         JSONObject stages = s.optJSONObject("stageByApp");
         int step = stages == null ? 0 : stages.optInt(category, 0);
         int stage = indexOfStage(orderOf(s, cfg), step);
-        String message = label(category) + " 사용 시간을 확인해 봐";
+        String message = InstalledApps.label(this, category) + " 사용 시간을 확인해 봐";
         if (stage == 0 || !android.provider.Settings.canDrawOverlays(this)) {
             showHeads(category, message);
         } else {
