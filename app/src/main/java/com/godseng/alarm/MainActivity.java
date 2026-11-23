@@ -92,7 +92,20 @@ public final class MainActivity extends Activity {
     private void maybeStartMonitor() {
         if (!hasUsagePermission(this)) return;
         String value = getPreferences(MODE_PRIVATE).getString("state", "");
-        if (!value.contains("\"initialized\":true")) return;
+        boolean active = false;
+        try {
+            JSONObject state = new JSONObject(value);
+            if (state.optBoolean("initialized", false)) {
+                JSONObject enabled = state.optJSONObject("on");
+                if (enabled != null) {
+                    java.util.Iterator<String> keys = enabled.keys();
+                    while (keys.hasNext()) {
+                        if (enabled.optBoolean(keys.next(), false)) { active = true; break; }
+                    }
+                }
+            }
+        } catch (Exception ignored) { }
+        if (!active) { stopService(new Intent(this, MonitorService.class)); return; }
         try {
             Intent intent = new Intent(this, MonitorService.class);
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
