@@ -139,10 +139,21 @@ public final class MainActivity extends Activity {
         }
         if (permissionsStep == 2) {
             permissionsStep = 3;
-            if (Build.VERSION.SDK_INT >= 33
-                    && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                    != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 503);
+            android.app.NotificationManager manager =
+                    (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            boolean enabled = manager != null && manager.areNotificationsEnabled();
+            boolean granted = Build.VERSION.SDK_INT < 33 ||
+                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+            if (!enabled || !granted) {
+                boolean asked = getPreferences(MODE_PRIVATE).getBoolean("notificationAsked", false);
+                if (Build.VERSION.SDK_INT >= 33 && !asked && !granted) {
+                    getPreferences(MODE_PRIVATE).edit().putBoolean("notificationAsked", true).apply();
+                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 503);
+                } else {
+                    Intent settings = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                    settings.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+                    startActivityForResult(settings, 504);
+                }
                 return;
             }
         }
@@ -152,7 +163,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if ((request == 501 || request == 502) && permissionsStep != -1) nextPermission();
+        if ((request == 501 || request == 502 || request == 504) && permissionsStep != -1) nextPermission();
     }
 
     @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
@@ -205,8 +216,11 @@ public final class MainActivity extends Activity {
             try {
                 status.put("usage", hasUsagePermission(MainActivity.this));
                 status.put("overlay", Settings.canDrawOverlays(MainActivity.this));
-                status.put("notification", Build.VERSION.SDK_INT < 33 ||
-                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED);
+                android.app.NotificationManager manager =
+                    (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                boolean granted = Build.VERSION.SDK_INT < 33 ||
+                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+                status.put("notification", granted && manager != null && manager.areNotificationsEnabled());
             } catch (Exception e) {
                 android.util.Log.w("GodsengAlarm", "Permission status failed", e);
             }
