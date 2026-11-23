@@ -97,7 +97,9 @@
       S.cfg = Object.fromEntries(Object.entries(saved.cfg || {})
         .map(([id, value]) => [id, toCfg(value)]));
       S.stageByApp = saved.stageByApp || {};
-      go('s-home');
+      const status = JSON.parse(Android.permissionStatusJson());
+      const granted = ['usage','overlay','notification'].every(key => status[key] === true);
+      go(granted ? 's-home' : 's-perm');
       renderHome();
       updCount();
       renderAlertConfig();
@@ -171,8 +173,13 @@
       catch (error) { finished = false; return; }
       if (!allGranted(now)) { finished = false; syncPermissions(); return; }
       rows.forEach(row => row.classList.add('done'));
-      go('s-pick');
-      requestAnimationFrame(updFlow);
+      if (wasInitialized) {
+        go('s-home');
+        renderHome();
+      } else {
+        go('s-pick');
+        requestAnimationFrame(updFlow);
+      }
       refreshUsage();
     }, 1400);
   }
@@ -194,6 +201,14 @@
     else if (!catalogReady) syncPermissions();
   }));
   setInterval(syncPermissions, 450);
+  // Keep the original carousel's active dot visible even with 100+ installed apps.
+  flow.addEventListener('scroll', () => requestAnimationFrame(() => {
+    const selected = dots.children[centerIdx];
+    if (selected) dots.scrollTo({
+      left:selected.offsetLeft - dots.clientWidth / 2 + selected.clientWidth / 2,
+      behavior:'instant'
+    });
+  }), {passive:true});
 
   // The installed list can change while the app is open.
   // Refresh before the original add-app click handler reads APPS.
