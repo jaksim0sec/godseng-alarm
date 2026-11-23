@@ -24,6 +24,7 @@ jobs:
       - run: node --check app/src/main/assets/native-adapter.js
       - run: node --check app/src/main/assets/features.js
       - run: node scripts/test_native_adapter.js
+      - run: node scripts/test_features.js
       - run: gradle --no-daemon :app:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
