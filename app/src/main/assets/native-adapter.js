@@ -16,7 +16,8 @@
     range: {...(value.range || {sh:23,sm:0,eh:7,em:0})},
     order: [...(value.order || [1,2,3])],
     msg: {...(value.msg || {})},
-    vib: value.vib !== false
+    vib: value.vib !== false,
+    repeat: !!value.repeat
   });
 
   const css = document.createElement('style');
@@ -196,6 +197,7 @@
       S.cfg = Object.fromEntries(Object.entries(saved.cfg || {})
         .map(([id, value]) => [id, toCfg(value)]));
       S.stageByApp = saved.stageByApp || {};
+      S.freeDayDate = saved.freeDayDate || null;
       const status = JSON.parse(Android.permissionStatusJson());
       const granted = ['usage','overlay','notification'].every(key => status[key] === true);
       go(granted ? 's-home' : 's-perm');
@@ -206,7 +208,8 @@
 
   function snapshot() {
     return JSON.stringify({
-      version:3, initialized:wasInitialized || Object.values(S.on).some(Boolean),
+      version:4, initialized:wasInitialized || Object.values(S.on).some(Boolean),
+      freeDayDate:S.freeDayDate || null,
       managedApps:[...managedApps],
       sel:[...S.sel], methods:[...S.methods],
       method:S.method, after:S.after, range:S.range,
@@ -216,7 +219,7 @@
       filter:S.filter, stageByApp:S.stageByApp,
       cfg:Object.fromEntries(Object.entries(S.cfg).map(([id,c]) => [id,{
         methods:[...c.methods],after:c.after,range:c.range,
-        order:c.order,msg:c.msg,vib:c.vib
+        order:c.order,msg:c.msg,vib:c.vib,repeat:!!c.repeat
       }]))
     });
   }
@@ -352,7 +355,8 @@
 
   window.NativeApp = {
     refreshUsage, syncPermissions, refreshInstalledApps:requestCatalog,
-    receiveCatalog, receiveAppIcon
+    receiveCatalog, receiveAppIcon, observeIcons:watchIcons,
+    persistState:()=>Android.saveState(snapshot())
   };
   requestCatalog();
   setTimeout(refreshUsage, 1200);
