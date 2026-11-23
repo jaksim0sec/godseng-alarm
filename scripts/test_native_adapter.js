@@ -74,4 +74,4 @@ window.events.pagehide();
 assert.deepEqual(savedSnapshot.managedApps,['com.example.third'],'managed app membership persists');
 assert.deepEqual(savedSnapshot.removed,[],'unconfigured apps are not persisted as user-removed');
 assert.equal(savedSnapshot.version,3);
-console.log('PASS 8 native adapter lifecycle assertions');
+console.log('PASS 10 native adapter lifecycle assertions');
