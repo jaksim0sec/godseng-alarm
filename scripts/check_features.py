@@ -10,7 +10,7 @@ original = read("app/src/main/assets/index.html")
 conditions = {
  "nav active label": "활성" in a and "home.querySelector('.fp[data-f=" in a,
  "larger home navigation": "#s-home .nav" in a and "font-size:33px" in a,
- "non-destructive home reconciliation": "function reconcileHome(" in a and "node.animate(" in a,
+ "non-destructive home reconciliation": "function reconcileHome(" in a and "card.animate(" in a,
  "undo on deactivation": "native-undo" in a and "setOn(id, true)" in a,
  "repeat infinity editor": "T.repeat" in a and "∞" in a,
  "repeat persisted": "repeat:!!c.repeat" in a,
