@@ -34,7 +34,7 @@ public final class WarningOverlay {
 
     public void show(String category, int stage, int minutes, JSONObject savedState) {
         handler.post(() -> {
-            dismiss();
+            dismissNow();
             if (!Settings.canDrawOverlays(context)) return;
             currentCategory = category;
             WebView view = new WebView(context);
@@ -89,23 +89,23 @@ public final class WarningOverlay {
                 view.loadUrl("file:///android_asset/index.html");
             } catch (Exception e) {
                 android.util.Log.w("GodsengAlarm", "Overlay unavailable", e);
-                dismiss();
+                dismissNow();
             }
         });
     }
 
-    public void dismiss() {
-        handler.post(() -> {
-            if (surface == null) return;
-            WebView v = surface;
-            surface = null;
-            currentCategory = null;
-            try {
-                ((WindowManager) context.getSystemService(Context.WINDOW_SERVICE)).removeView(v);
-            } catch (Exception ignored) { }
-            v.removeJavascriptInterface("WarningNative");
-            v.destroy();
-        });
+    public void dismiss() { handler.post(this::dismissNow); }
+
+    private void dismissNow() {
+        if (surface == null) return;
+        WebView v = surface;
+        surface = null;
+        currentCategory = null;
+        try {
+            ((WindowManager) context.getSystemService(Context.WINDOW_SERVICE)).removeView(v);
+        } catch (Exception ignored) { }
+        v.removeJavascriptInterface("WarningNative");
+        v.destroy();
     }
 
     private final class WarningBridge {
