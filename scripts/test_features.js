@@ -55,7 +55,8 @@ el('s-add-stage').querySelector=()=>el('vibrow');
 el('vibrow').parentElement=el('stage-scroll');
 const document={
   body:el('body'),head:{appendChild(node){css+=node.textContent}},
-  getElementById:el,createElement:()=>el('temporary-'+Math.random()),
+  getElementById:id=>nodes.get(id)||[...nodes.values()].find(n=>n.id===id)||el(id),
+  createElement:()=>el('temporary-'+Math.random()),
   querySelectorAll:()=>[]
 };
 const S={sel:new Set(),cfg:{},methods:new Set(),on:{a:true,b:true},
