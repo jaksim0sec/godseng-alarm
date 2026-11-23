@@ -116,6 +116,15 @@
     if (cur === 's-detail' && typeof dId !== 'undefined' && dId === id) {
       document.querySelectorAll('#dbody .tile svg.i').forEach(svg => { svg.innerHTML = app.p; });
     }
+    if (cur === 's-insight') {
+      const available = APPS.filter(a => !S.removed.has(a.id));
+      const enabled = available.filter(a => S.on[a.id]);
+      const ranked = [...(enabled.length ? enabled : available)].sort((a,b) => b.mins - a.mins);
+      const index = ranked.slice(0,5).findIndex(a => a.id === id);
+      const row = document.querySelectorAll('#ibody .rk')[index];
+      const svg = row && row.querySelector(':scope > svg.i');
+      if (svg) svg.innerHTML = app.p;
+    }
     if (typeof T !== 'undefined' && T && T.id === id) {
       document.querySelectorAll('#at-chip .tile svg.i,#as-chip .tile svg.i')
         .forEach(svg => { svg.innerHTML = app.p; });
@@ -136,6 +145,12 @@
     screen.querySelectorAll('.fi[data-id],.ag[data-id],.card[data-id]')
       .forEach(element => iconObserver.observe(element));
     if (cur === 's-detail' && typeof dId !== 'undefined' && dId) requestIcon(dId);
+    if (cur === 's-insight') {
+      const available = APPS.filter(a => !S.removed.has(a.id));
+      const enabled = available.filter(a => S.on[a.id]);
+      [...(enabled.length ? enabled : available)].sort((a,b) => b.mins - a.mins)
+        .slice(0,5).forEach(a => requestIcon(a.id));
+    }
   }
   // Preserve original handlers; only attach visibility tracking after screen changes.
   const originalGo = go;
@@ -302,6 +317,15 @@
     requestCatalog();
     toast('설치된 앱을 불러오는 중이에요');
   }, {capture:true});
+
+  const originalInsightClick = byId('b-insight').onclick;
+  byId('b-insight').onclick = event => {
+    if (APPS.every(a => S.removed.has(a.id))) {
+      toast('앱을 먼저 추가해주세요');
+      return;
+    }
+    originalInsightClick.call(byId('b-insight'), event);
+  };
 
   // New installs remain available only in the add-app picker, not on Home.
   byId('b-final').addEventListener('click', () => {
