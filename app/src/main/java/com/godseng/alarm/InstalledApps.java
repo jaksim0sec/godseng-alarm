@@ -22,6 +22,8 @@ import java.text.Collator;
 
 /**
  * Actual launcher-visible apps, not a hard-coded list or guessed icons.
+ * Return names and package IDs first. Encoding every icon during catalog load
+ * blocks the initial WebView/bridge startup and can generate megabytes of JSON.
  * Android 11+ visibility is granted only for MAIN/LAUNCHER activities in manifest <queries>.
  */
 public final class InstalledApps {
@@ -48,7 +50,7 @@ public final class InstalledApps {
             try {
                 app.put("id", id);
                 app.put("name", packages.get(id));
-                app.put("icon", iconDataUri(context, id));
+                // Icons are encoded lazily only when their tiles become visible.
                 output.put(app);
             } catch (Exception error) {
                 android.util.Log.w("GodsengAlarm", "Could not encode launcher app " + id, error);
