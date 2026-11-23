@@ -48,16 +48,20 @@ public final class WarningOverlay {
             view.setWebViewClient(new WebViewClient() {
                 @Override public void onPageFinished(WebView web, String url) {
                     if (surface != web) return;
+                    String uri = InstalledApps.iconDataUri(context, category);
+                    String icon = uri.isEmpty() ? "<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"5\"/>"
+                            : "<image class=\"native-installed-icon\" x=\"0\" y=\"0\" width=\"24\" height=\"24\" href=\"" + uri + "\"/>";
                     String js = "(function(){" +
                             "const nativeStyle=document.createElement('style');" +
                             "nativeStyle.textContent='html,body{background:transparent!important;}'+" +
-                            "'.scr{display:none!important;}';" +
+                            "'.scr{display:none!important;}.tile:has(.native-installed-icon){background:transparent!important;overflow:hidden}'+" +
+                            "'.tile svg:has(.native-installed-icon){width:100%!important;height:100%!important;stroke:none!important}';" +
                             "document.head.appendChild(nativeStyle);" +
                             "const saved=" + savedState.toString() + ";" +
                             "const id=" + JSONObject.quote(category) + ";" +
-                            "const app=APPS.find(x=>x.id===id);" +
-                            "if(!app)return;" +
-                            "app.mins=" + minutes + ";" +
+                            "const app={id:id,name:" + JSONObject.quote(InstalledApps.label(context, category)) +
+                            ",mins:" + minutes + ",p:" + JSONObject.quote(icon) + "};" +
+                            "APPS.splice(0,APPS.length,app);" +
                             "S.on[id]=true;" +
                             "const source=saved.cfg&&saved.cfg[id];" +
                             "if(source)S.cfg[id]={methods:new Set(source.methods||[])," +
