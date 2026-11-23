@@ -83,7 +83,7 @@ public final class MainActivity extends Activity {
         super.onResume();
         handler.postDelayed(() -> {
             if (pageLoaded && browser != null) {
-                browser.evaluateJavascript("window.NativeApp && NativeApp.refreshUsage()", null);
+                browser.evaluateJavascript("window.NativeApp && (NativeApp.refreshUsage(), NativeApp.syncPermissions && NativeApp.syncPermissions())", null);
             }
             maybeStartMonitor();
         }, 650);
@@ -196,6 +196,21 @@ public final class MainActivity extends Activity {
         }
         @JavascriptInterface public String usageJson() {
             return UsageEngine.getUsageJson(MainActivity.this).toString();
+        }
+        @JavascriptInterface public String installedAppsJson() {
+            return InstalledApps.list(MainActivity.this).toString();
+        }
+        @JavascriptInterface public String permissionStatusJson() {
+            JSONObject status = new JSONObject();
+            try {
+                status.put("usage", hasUsagePermission(MainActivity.this));
+                status.put("overlay", Settings.canDrawOverlays(MainActivity.this));
+                status.put("notification", Build.VERSION.SDK_INT < 33 ||
+                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED);
+            } catch (Exception e) {
+                android.util.Log.w("GodsengAlarm", "Permission status failed", e);
+            }
+            return status.toString();
         }
         @JavascriptInterface public void startMonitoring() {
             runOnUiThread(MainActivity.this::maybeStartMonitor);
