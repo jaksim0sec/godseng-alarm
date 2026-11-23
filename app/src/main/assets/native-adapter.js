@@ -30,6 +30,8 @@
         S.range = saved.range || {sh: 23, sm: 0, eh: 7, em: 0};
         S.baseStage = saved.baseStage ?? 1;
         S.escalate = saved.escalate !== false;
+        S.feedback = toSet(saved.feedback || ['light', 'vibrate']);
+        S.message = saved.message || '이제 잠깐 쉬어갈 시간이야';
         S.on = saved.on || {};
         S.removed = toSet(saved.removed);
         S.pin = toSet(saved.pin);
@@ -52,6 +54,7 @@
       version: 1, initialized, sel: [...S.sel], methods: [...S.methods],
       method: S.method, after: S.after, range: S.range,
       baseStage: S.baseStage, escalate: S.escalate,
+      feedback: [...S.feedback], message: S.message,
       on: S.on, removed: [...S.removed], pin: [...S.pin],
       filter: S.filter, stageByApp: S.stageByApp,
       cfg: Object.fromEntries(Object.entries(S.cfg).map(([id, c]) => [id, {
