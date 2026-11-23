@@ -26,10 +26,19 @@ Android Studio에서 이 저장소를 열고 Android SDK 35와 JDK 17로 `assemb
 ## Android 2차 변경 (실제 앱 목록/권한 애니메이션)
 
 - `InstalledApps.java`: 설치된 앱 패키지명·표시명·아이콘 PNG를 조회. APK에 특정 타사 아이콘을 하드코딩하지 않음
-- `native-adapter.js`: 원본 캐러셀·홈·앱 추가·상세에서 참조하는 앱 데이터를 실제 목록으로 변경. 캐러셀 애니메이션과 체크 SVG는 원본 유지
+- `native-adapter.js`: 원본 캐러셀·홈·앱 추가·상세에서 참조하는 앱 데이터를 실제 목록으로 변경. **홈은 사용자가 직접 추가한 앱만 표시**하고 감시를 끈 앱만 비활 탭에 유지. 캐러셀 애니메이션과 체크 SVG는 원본 유지
 - `MainActivity.permissionStatusJson()`: 실제 Android 사용 정보, 오버레이, 알림 활성 상태를 반환
 - 권한 화면: 로딩 스피너는 요청 상태, 체크는 승인 확인 후에만. 거부했을 때 자동으로 다음 화면으로 넘어가지 않음
 - `MonitorService`: 실제 앱 패키지 ID로 감시·경고 상태 관리
 - `WarningOverlay`: 선택한 실제 앱 정보를 주입하여 기존 HTML 경고 애니메이션을 사용
 
 검증: `scripts/check_parity.py`, `scripts/check_native_integrations.py`, `scripts/check_inline_js.py`. Android 기기 실동작과 APK 빌드는 GitHub Actions/기기에서 별도로 확인해야 함.
+
+## 성능·목록 보정 (2026-11-24)
+
+- 기존 병목: `InstalledApps.list()`가 모든 설치 앱 아이콘을 PNG/Base64로 변환한 뒤 큰 JSON 문자열을 JavaScript에 동기 전달. 이후 앱 선택 화면과 홈에 모든 앱을 한꺼번에 등록
+- 현재 방식: 설치 앱 **이름/패키지 목록은 백그라운드 작업자**에서 가져오며, **실제 아이콘은 보이는 타일에 한해 비동기로 요청**. 앱 추가 버튼을 누를 때 목록 전체를 강제로 다시 생성하지 않음
+- 홈은 `managedApps`라는 별도 등록 집합으로 제한. 한 번도 추가하지 않은 앱은 비활 탭에도 나타나지 않음. 등록 후 감시 중단한 앱은 비활 탭에 보존
+- 앱 목록 캐러셀의 대규모 HTML 생성은 **최초 앱 선택 화면 진입까지 연기**. 저장된 사용자 설정이 있으면 홈부터 로드하고 필요한 등록 앱만 렌더링
+- `node scripts/test_native_adapter.js`: 비동기 목록, 무선행 아이콘, 저장 복원, 새 앱 등록 및 비활 동작 검증
+- 성능 개선 구조는 코드/모의 실행으로 확인했지만, 실기기 프레임 시간은 측정하지 못했음
