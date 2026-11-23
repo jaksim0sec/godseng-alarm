@@ -58,28 +58,33 @@ public final class UsageEngine {
         return json;
     }
 
-    public static String currentForeground(Context context) {
+    private static long lastEventRead;
+    private static String foregroundPackage;
+
+    public static synchronized String currentForeground(Context context) {
         UsageStatsManager mgr = (UsageStatsManager) context.getSystemService(Context.USAGE_STATS_SERVICE);
         if (mgr == null || !MainActivity.hasUsagePermission(context)) return null;
         long now = System.currentTimeMillis();
-        // A long-running foreground session may not emit new resume events. Retain the
-        // result between service polling iterations and use the most recent activity event.
-        UsageEvents events = mgr.queryEvents(now - 8 * 60 * 60 * 1000L, now);
-        if (events == null) return null;
+        // Initial scan rebuilds the foreground state. Subsequent polls read only new events,
+        // so monitoring cost does not grow with the number of events in the current day.
+        long begin = lastEventRead > 0 && lastEventRead < now
+                ? Math.max(0, lastEventRead - 1000) : now - 8 * 60 * 60 * 1000L;
+        UsageEvents events = mgr.queryEvents(begin, now);
+        if (events == null) return foregroundPackage;
         UsageEvents.Event event = new UsageEvents.Event();
-        String current = null;
         while (events.hasNextEvent()) {
             events.getNextEvent(event);
             int type = event.getEventType();
             if (type == UsageEvents.Event.ACTIVITY_RESUMED
                     || type == UsageEvents.Event.MOVE_TO_FOREGROUND) {
-                current = event.getPackageName();
+                foregroundPackage = event.getPackageName();
             } else if (type == UsageEvents.Event.ACTIVITY_PAUSED
                     || type == UsageEvents.Event.MOVE_TO_BACKGROUND) {
-                if (event.getPackageName().equals(current)) current = null;
+                if (event.getPackageName().equals(foregroundPackage)) foregroundPackage = null;
             }
         }
-        return current;
+        lastEventRead = now;
+        return foregroundPackage;
     }
 
     public static String classify(Context context, String packageName) {
