@@ -21,6 +21,7 @@ jobs:
       - run: python3 scripts/check_native_integrations.py
       - run: python3 scripts/check_inline_js.py
       - run: node --check app/src/main/assets/native-adapter.js
+      - run: node scripts/test_native_adapter.js
       - run: gradle --no-daemon :app:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
