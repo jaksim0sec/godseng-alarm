@@ -94,7 +94,10 @@ public final class WarningOverlay {
         });
     }
 
-    public void dismiss() { handler.post(this::dismissNow); }
+    public void dismiss() {
+        if (Looper.myLooper() == Looper.getMainLooper()) dismissNow();
+        else handler.post(this::dismissNow);
+    }
 
     private void dismissNow() {
         if (surface == null) return;
