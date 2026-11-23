@@ -25,12 +25,15 @@ import org.json.JSONObject;
 import java.io.InputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private WebView browser;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private int permissionsStep = -1;
     private boolean pageLoaded = false;
+    private final ExecutorService appWorker = Executors.newSingleThreadExecutor();
 
     public static boolean hasUsagePermission(Context context) {
         AppOpsManager ops = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
@@ -190,6 +193,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        appWorker.shutdownNow();
         if (browser != null) {
             browser.removeJavascriptInterface("Android");
             browser.destroy();
@@ -211,8 +215,29 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public String usageJson() {
             return UsageEngine.getUsageJson(MainActivity.this).toString();
         }
-        @JavascriptInterface public String installedAppsJson() {
-            return InstalledApps.list(MainActivity.this).toString();
+        // The original synchronous bridge generated hundreds of PNGs and blocked WebView startup.
+        // Package enumeration and icon encoding now happen off the UI/JavaScript thread.
+        @JavascriptInterface public void requestInstalledApps() {
+            appWorker.execute(() -> {
+                String payload = InstalledApps.list(MainActivity.this).toString();
+                handler.post(() -> {
+                    if (browser != null) browser.evaluateJavascript(
+                            "window.NativeApp && NativeApp.receiveCatalog(" +
+                            JSONObject.quote(payload) + ")", null);
+                });
+            });
+        }
+        @JavascriptInterface public void requestAppIcon(String packageId) {
+            if (packageId == null || !packageId.matches("[A-Za-z0-9_.]+")) return;
+            appWorker.execute(() -> {
+                String uri = InstalledApps.iconDataUri(MainActivity.this, packageId);
+                handler.post(() -> {
+                    if (browser != null) browser.evaluateJavascript(
+                            "window.NativeApp && NativeApp.receiveAppIcon(" +
+                            JSONObject.quote(packageId) + "," +
+                            JSONObject.quote(uri) + ")", null);
+                });
+            });
         }
         @JavascriptInterface public String permissionStatusJson() {
             JSONObject status = new JSONObject();
