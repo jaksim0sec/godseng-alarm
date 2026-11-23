@@ -181,6 +181,9 @@ public final class MainActivity extends Activity {
                 "else if(cur==='s-detail')go('s-home',true);" +
                 "else if(cur==='s-insight')go('s-home',true);" +
                 "else if(cur==='s-method')go('s-pick',true);" +
+                "else if(cur==='s-alert')go('s-method',true);" +
+                "else if(cur==='s-pick'||cur==='s-perm')go('s-hero',true);" +
+                "else if(cur==='s-add-pick')go('s-home',true);" +
                 "else go('s-home',true);return true;})()",
                 value -> { if ("false".equals(value)) MainActivity.super.onBackPressed(); }
         );
