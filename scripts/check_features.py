@@ -8,7 +8,7 @@ m = read("app/src/main/java/com/godseng/alarm/MonitorService.java")
 manifest = read("app/src/main/AndroidManifest.xml")
 original = read("app/src/main/assets/index.html")
 conditions = {
- "nav active label": "활성" in a and "data-f=on" in a,
+ "nav active label": "활성" in a and "home.querySelector('.fp[data-f=" in a,
  "larger home navigation": "#s-home .nav" in a and "font-size:33px" in a,
  "non-destructive home reconciliation": "function reconcileHome(" in a and "node.animate(" in a,
  "undo on deactivation": "native-undo" in a and "setOn(id, true)" in a,
