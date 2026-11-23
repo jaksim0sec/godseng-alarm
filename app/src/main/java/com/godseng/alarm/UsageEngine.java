@@ -12,7 +12,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Android usage statistics, mapped onto the ten UNCHANGED categories in the source HTML. */
+/** Android usage statistics keyed by real installed application package names. */
 public final class UsageEngine {
     private UsageEngine() {}
     static final String[] CATEGORIES =
@@ -22,7 +22,8 @@ public final class UsageEngine {
         try {
             JSONObject state = new JSONObject(context.getSharedPreferences(
                     "MainActivity", Context.MODE_PRIVATE).getString("state", "{}"));
-            if (!state.optJSONObject("on").optBoolean(category, false)) return false;
+            JSONObject enabled = state.optJSONObject("on");
+            if (enabled == null || !enabled.optBoolean(category, false)) return false;
             org.json.JSONArray removed = state.optJSONArray("removed");
             if (removed != null) for (int i = 0; i < removed.length(); i++)
                 if (category.equals(removed.optString(i))) return false;
@@ -36,7 +37,7 @@ public final class UsageEngine {
         JSONObject json = new JSONObject();
         if (!MainActivity.hasUsagePermission(context)) return json;
         Map<String, Long> times = new HashMap<>();
-        for (String category : CATEGORIES) times.put(category, 0L);
+        // Each key is a real Android package ID. Do not merge different installed apps.
         UsageStatsManager mgr = (UsageStatsManager) context.getSystemService(Context.USAGE_STATS_SERVICE);
         if (mgr == null) return json;
         Calendar today = Calendar.getInstance();
@@ -48,12 +49,14 @@ public final class UsageEngine {
                 UsageStatsManager.INTERVAL_DAILY, today.getTimeInMillis(), System.currentTimeMillis());
         if (stats == null) return json;
         for (UsageStats entry : stats) {
-            String category = classify(context, entry.getPackageName());
-            if (category != null) times.put(category,
-                    times.get(category) + Math.max(0L, entry.getTotalTimeInForeground()));
+            String packageId = entry.getPackageName();
+            if (packageId == null) continue;
+            times.merge(packageId, Math.max(0L, entry.getTotalTimeInForeground()), Long::sum);
         }
         try {
-            for (String category : CATEGORIES) json.put(category, times.get(category) / 60000L);
+            for (Map.Entry<String, Long> entry : times.entrySet()) {
+                json.put(entry.getKey(), entry.getValue() / 60000L);
+            }
         } catch (Exception ignored) {}
         return json;
     }
