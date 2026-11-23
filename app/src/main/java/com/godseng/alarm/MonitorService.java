@@ -31,6 +31,22 @@ public final class MonitorService extends Service {
     private String lastCategory;
     private String pendingHeads;
     private WarningOverlay overlay;
+    private Boolean shownFreeDay;
+
+    private void updateMonitorNotification(boolean paused) {
+        if (shownFreeDay != null && shownFreeDay.booleanValue() == paused) return;
+        shownFreeDay = paused;
+        Intent open = new Intent(this, MainActivity.class);
+        PendingIntent content = PendingIntent.getActivity(this, 1, open,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification notification = new Notification.Builder(this, MONITOR_CHANNEL)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setContentTitle("갓생알리미")
+                .setContentText(paused ? "프리데이 · 오늘은 감시 일시 중단 · 내일 자동 재개"
+                        : "선택한 앱의 사용 시간을 감시하는 중")
+                .setContentIntent(content).setOngoing(true).build();
+        ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).notify(ONGOING_ID, notification);
+    }
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             try { evaluate(); }
@@ -152,6 +168,7 @@ public final class MonitorService extends Service {
     private void evaluate() {
         if (!MainActivity.hasUsagePermission(this)) return;
         JSONObject s = state();
+        updateMonitorNotification(isFreeDayToday(s));
         if (isFreeDayToday(s)) {
             if (overlay != null) overlay.dismiss();
             if (pendingHeads != null) {
