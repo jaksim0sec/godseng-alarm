@@ -71,14 +71,19 @@ public final class MainActivity extends Activity {
     }
 
     private void injectAdapter() {
-        try (InputStream in = getAssets().open("native-adapter.js");
+        injectJavascriptAsset("native-adapter.js");
+        injectJavascriptAsset("features.js");
+    }
+
+    private void injectJavascriptAsset(String assetName) {
+        try (InputStream in = getAssets().open(assetName);
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             byte[] chunk = new byte[8192];
             int n;
             while ((n = in.read(chunk)) >= 0) output.write(chunk, 0, n);
             browser.evaluateJavascript(output.toString("UTF-8"), null);
         } catch (Exception e) {
-            android.util.Log.e("GodsengAlarm", "Native adapter failed to load", e);
+            android.util.Log.e("GodsengAlarm", "JavaScript asset failed to load: " + assetName, e);
         }
     }
 
@@ -86,7 +91,7 @@ public final class MainActivity extends Activity {
         super.onResume();
         handler.postDelayed(() -> {
             if (pageLoaded && browser != null) {
-                browser.evaluateJavascript("window.NativeApp && (NativeApp.refreshUsage(), NativeApp.syncPermissions && NativeApp.syncPermissions())", null);
+                browser.evaluateJavascript("window.NativeApp && (NativeApp.refreshUsage(), NativeApp.syncPermissions && NativeApp.syncPermissions(), NativeApp.syncFreeDay && NativeApp.syncFreeDay())", null);
             }
             maybeStartMonitor();
         }, 650);
@@ -256,6 +261,28 @@ public final class MainActivity extends Activity {
         }
         @JavascriptInterface public void startMonitoring() {
             runOnUiThread(MainActivity.this::maybeStartMonitor);
+        }
+        @JavascriptInterface public void freeDayChanged() {
+            runOnUiThread(() -> {
+                maybeStartMonitor();
+                try {
+                    JSONObject saved = new JSONObject(getPreferences(MODE_PRIVATE).getString("state", "{}"));
+                    JSONObject enabled = saved.optJSONObject("on");
+                    boolean hasEnabled = false;
+                    if (enabled != null) {
+                        java.util.Iterator<String> keys = enabled.keys();
+                        while (keys.hasNext()) {
+                            if (enabled.optBoolean(keys.next(), false)) {hasEnabled = true; break;}
+                        }
+                    }
+                    if (!hasEnabled || !hasUsagePermission(MainActivity.this)) return;
+                    Intent intent = new Intent(MainActivity.this, MonitorService.class);
+                    intent.setAction("com.godseng.alarm.FREE_DAY_CHANGED");
+                    startService(intent);
+                } catch (Exception error) {
+                    android.util.Log.w("GodsengAlarm", "Free Day update unavailable", error);
+                }
+            });
         }
         @JavascriptInterface public void requestPermissions() {
             runOnUiThread(MainActivity.this::requestPermissionsInOrder);
