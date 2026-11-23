@@ -17,6 +17,9 @@ import org.json.JSONObject;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Calendar;
+import java.util.Date;
+import java.util.Locale;
+import java.text.SimpleDateFormat;
 
 public final class MonitorService extends Service {
     private static final String MONITOR_CHANNEL = "godseng_monitor";
@@ -65,6 +68,14 @@ public final class MonitorService extends Service {
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && "com.godseng.alarm.WARNING_ACTION".equals(intent.getAction())) {
             handleAction(intent.getStringExtra("action"), intent.getStringExtra("category"));
+        }
+        if (intent != null && "com.godseng.alarm.FREE_DAY_CHANGED".equals(intent.getAction())) {
+            if (overlay != null) overlay.dismiss();
+            pendingHeads = null;
+            lastCategory = null;
+            ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).cancel(WARNING_ID);
+            handler.removeCallbacks(tick);
+            handler.post(tick);
         }
         return START_STICKY;
     }
@@ -133,8 +144,23 @@ public final class MonitorService extends Service {
                 || (hasMethod(state, cfg, "range") && range != null && inRange(minute, range));
     }
 
+    static boolean isFreeDayToday(JSONObject saved) {
+        String today = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
+        return today.equals(saved.optString("freeDayDate", ""));
+    }
+
     private void evaluate() {
         if (!MainActivity.hasUsagePermission(this)) return;
+        JSONObject s = state();
+        if (isFreeDayToday(s)) {
+            if (overlay != null) overlay.dismiss();
+            if (pendingHeads != null) {
+                ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).cancel(WARNING_ID);
+            }
+            pendingHeads = null;
+            lastCategory = null;
+            return;
+        }
         String pkg = UsageEngine.currentForeground(this);
         // State keys now are real package IDs, not predefined category names.
         String category = getPackageName().equals(pkg) ? null : pkg;
@@ -145,7 +171,6 @@ public final class MonitorService extends Service {
         }
         lastCategory = category;
         if (category == null || !UsageEngine.isEnabled(this, category)) return;
-        JSONObject s = state();
         JSONObject configs = s.optJSONObject("cfg");
         JSONObject cfg = configs == null ? null : configs.optJSONObject(category);
         if (cfg == null) cfg = new JSONObject();
@@ -234,7 +259,10 @@ public final class MonitorService extends Service {
             JSONArray order = orderOf(s, cfg);
             JSONObject stages = s.optJSONObject("stageByApp");
             int current = stages == null ? 0 : stages.optInt(category, 0);
-            updateStage(category, Math.min(current + 1, order.length() - 1));
+            int next = cfg.optBoolean("repeat", false) && order.length() > 0
+                    ? (current + 1) % order.length()
+                    : Math.min(current + 1, Math.max(0, order.length() - 1));
+            updateStage(category, next);
         } else if ("stop".equals(action)) {
             resetStage(category);
             goHome();
