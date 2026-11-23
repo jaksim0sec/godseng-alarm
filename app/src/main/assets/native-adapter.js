@@ -23,7 +23,7 @@
   css.textContent = [
     '.tile:has(.native-installed-icon){background:transparent!important;overflow:hidden}',
     '.fi .tile svg:has(.native-installed-icon),.ag .tile svg:has(.native-installed-icon),.dhead .tile svg:has(.native-installed-icon),.add-item .tile svg:has(.native-installed-icon){width:100%!important;height:100%!important;stroke:none!important}',
-    '.card .tile svg:has(.native-installed-icon){width:30px!important;height:30px!important;stroke:none!important}',
+    '.card .tile svg:has(.native-installed-icon){width:36px!important;height:36px!important;stroke:none!important}',
     '.achip .tile svg:has(.native-installed-icon){width:18px!important;height:18px!important;stroke:none!important}',
     '.rk>svg:has(.native-installed-icon){stroke:none!important}',
     '#dots{overflow-x:auto;scrollbar-width:none;justify-content:flex-start;padding:0 12px}',
