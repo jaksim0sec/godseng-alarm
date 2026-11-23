@@ -242,7 +242,9 @@ public final class MonitorService extends Service {
 
     void handleAction(String action, String category) {
         if (category == null) return;
-        if ("home".equals(action)) { goHome(); return; }
+        // The original HTML resets its warning step after the final HOME action.
+        // Do the same for the background monitor, including repeat mode.
+        if ("home".equals(action)) { resetStage(category); goHome(); return; }
         if ("done".equals(action)) {
             if (overlay != null) overlay.dismiss();
             return;
