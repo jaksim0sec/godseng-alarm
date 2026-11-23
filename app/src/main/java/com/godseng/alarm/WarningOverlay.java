@@ -51,7 +51,7 @@ public final class WarningOverlay {
                     String js = "(function(){" +
                             "const nativeStyle=document.createElement('style');" +
                             "nativeStyle.textContent='html,body{background:transparent!important;}'+" +
-                            "'.app{max-width:none!important;}.scr{display:none!important;}';" +
+                            "'.scr{display:none!important;}';" +
                             "document.head.appendChild(nativeStyle);" +
                             "const saved=" + savedState.toString() + ";" +
                             "const id=" + JSONObject.quote(category) + ";" +
