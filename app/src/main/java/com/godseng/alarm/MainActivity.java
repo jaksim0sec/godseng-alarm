@@ -33,6 +33,8 @@ public final class MainActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private int permissionsStep = -1;
     private boolean pageLoaded = false;
+    private WarningOverlay previewOverlay;
+    private int previewNotificationToken;
     private final ExecutorService appWorker = Executors.newSingleThreadExecutor();
 
     public static boolean hasUsagePermission(Context context) {
@@ -73,6 +75,7 @@ public final class MainActivity extends Activity {
     private void injectAdapter() {
         injectJavascriptAsset("native-adapter.js");
         injectJavascriptAsset("features.js");
+        injectJavascriptAsset("warning-preview.js");
     }
 
     private void injectJavascriptAsset(String assetName) {
@@ -214,6 +217,9 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        previewNotificationToken++;
+        if (previewOverlay != null) previewOverlay.dismiss();
+        WarningNotifications.dismissPreview(this);
         appWorker.shutdownNow();
         if (browser != null) {
             browser.removeJavascriptInterface("Android");
@@ -260,6 +266,60 @@ public final class MainActivity extends Activity {
                 });
             });
         }
+        /**
+         * Editor playback uses the real warning path, not the HTML's mock
+         * sandbox. Its transient draft is NOT saved to per-app settings.
+         */
+        @JavascriptInterface public boolean previewWarning(String payload) {
+            try {
+                JSONObject request = new JSONObject(payload);
+                String packageId = request.optString("id", "");
+                int stage = request.optInt("stage", -1);
+                if (!packageId.matches("[A-Za-z0-9_.]{3,255}") || stage < 0 || stage > 3)
+                    return false;
+                JSONObject cfg = request.optJSONObject("cfg");
+                if (cfg == null) return false;
+                JSONObject messages = cfg.optJSONObject("msg");
+                if (messages != null) {
+                    for (int i = 0; i < 4; i++) {
+                        if (messages.optString(String.valueOf(i), "").length() > 60)
+                            return false;
+                    }
+                }
+                int minutes = Math.max(0, Math.min(1440, request.optInt("minutes", 0)));
+                if (stage == 0 && !WarningNotifications.canNotify(MainActivity.this))
+                    return false;
+                if (stage != 0 && !Settings.canDrawOverlays(MainActivity.this))
+                    return false;
+                runOnUiThread(() -> {
+                    previewNotificationToken++;
+                    WarningNotifications.dismissPreview(MainActivity.this);
+                    if (previewOverlay != null) previewOverlay.dismiss();
+                    if (stage == 0) {
+                        String message = WarningNotifications.message(
+                                MainActivity.this, packageId, stage, minutes, cfg);
+                        WarningNotifications.show(
+                                MainActivity.this, packageId, message, true);
+                        int token = previewNotificationToken;
+                        handler.postDelayed(() -> {
+                            if (token == previewNotificationToken)
+                                WarningNotifications.dismissPreview(MainActivity.this);
+                        }, 6500);
+                    } else {
+                        if (previewOverlay == null) {
+                            previewOverlay = new WarningOverlay(MainActivity.this,
+                                    (action, ignoredId) -> {});
+                        }
+                        previewOverlay.showPreview(packageId, stage, minutes, cfg);
+                    }
+                });
+                return true;
+            } catch (Exception error) {
+                android.util.Log.w("GodsengAlarm", "Could not play warning", error);
+                return false;
+            }
+        }
+
         @JavascriptInterface public String permissionStatusJson() {
             JSONObject status = new JSONObject();
             try {
