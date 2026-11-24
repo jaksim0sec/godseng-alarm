@@ -57,6 +57,7 @@ public final class MonitorService extends Service {
     private static final int ONE_MINUTE_ID = 5003;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private boolean polling;
+    private boolean pollRequestedDuringQuery;
     private boolean destroyed;
     private boolean screenInteractive = true;
     private boolean lastWasMonitored;
@@ -128,6 +129,12 @@ public final class MonitorService extends Service {
                     handler.post(() -> {
                         polling = false;
                         if (destroyed || !screenInteractive) return;
+                        if (pollRequestedDuringQuery) {
+                            // Settings changed while the worker was reading. Discard stale results.
+                            pollRequestedDuringQuery = false;
+                            handler.post(tick);
+                            return;
+                        }
                         boolean monitored = false;
                         long nextDelay = MonitorPolicy.IDLE_POLL_MS;
                         if (delivered != null) {
@@ -157,7 +164,9 @@ public final class MonitorService extends Service {
 
     private void requestPollNow() {
         handler.removeCallbacks(tick);
-        if (!destroyed && screenInteractive && !polling) handler.post(tick);
+        if (destroyed || !screenInteractive) return;
+        if (polling) pollRequestedDuringQuery = true;
+        else handler.post(tick);
     }
 
     private static long millisUntilTomorrow() {
@@ -240,6 +249,7 @@ public final class MonitorService extends Service {
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(ONGOING_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
         } else startForeground(ONGOING_ID, notification);
+        shownFreeDay = Boolean.FALSE;
         overlay = new WarningOverlay(this, this::handleAction);
         IntentFilter screenFilter = new IntentFilter();
         screenFilter.addAction(Intent.ACTION_SCREEN_ON);
