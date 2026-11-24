@@ -82,6 +82,7 @@ public final class UsageEngine {
         // A startup scan covers only the recent 30 minutes, not the prior 8 hours.
         // Subsequent reads are incremental. Scan off the main/UI thread.
         long begin = lastEventRead > 0L && lastEventRead < now
+                && now - lastEventRead <= 30L * 60L * 1000L
                 ? lastEventRead : Math.max(0L, now - 30L * 60L * 1000L);
         UsageEvents events = mgr.queryEvents(begin, now);
         if (events == null) return new ForegroundState(foregroundPackage, foregroundSinceMillis);
