@@ -303,7 +303,8 @@
     if (!allGranted(latest)) Android.requestPermissions();
     else if (!catalogReady) syncPermissions();
   }));
-  setInterval(syncPermissions, 450);
+  // Actual Android onResume rechecks permissions after returning from system settings.
+  // A 450 ms timer would keep waking an invisible WebView unnecessarily.
   // Keep the original carousel's active dot visible even with 100+ installed apps.
   flow.addEventListener('scroll', () => requestAnimationFrame(() => {
     const selected = dots.children[centerIdx];
@@ -360,5 +361,7 @@
   };
   requestCatalog();
   setTimeout(refreshUsage, 1200);
-  setInterval(refreshUsage, 45000);
+  setInterval(() => {
+    if (!document.hidden && (cur === 's-home' || cur === 's-insight')) refreshUsage();
+  }, 60000);
 })();
