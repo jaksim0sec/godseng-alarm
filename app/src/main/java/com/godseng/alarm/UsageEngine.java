@@ -63,31 +63,71 @@ public final class UsageEngine {
 
     private static long lastEventRead;
     private static String foregroundPackage;
+    private static long foregroundSinceMillis;
 
-    public static synchronized String currentForeground(Context context) {
+    public static final class ForegroundState {
+        public final String packageName;
+        public final long sinceMillis;
+        ForegroundState(String packageName, long sinceMillis) {
+            this.packageName = packageName;
+            this.sinceMillis = sinceMillis;
+        }
+    }
+
+    public static synchronized ForegroundState currentForegroundState(Context context) {
         UsageStatsManager mgr = (UsageStatsManager) context.getSystemService(Context.USAGE_STATS_SERVICE);
-        if (mgr == null || !MainActivity.hasUsagePermission(context)) return null;
+        if (mgr == null || !MainActivity.hasUsagePermission(context))
+            return new ForegroundState(null, 0L);
         long now = System.currentTimeMillis();
-        // Initial scan rebuilds the foreground state. Subsequent polls read only new events,
-        // so monitoring cost does not grow with the number of events in the current day.
-        long begin = lastEventRead > 0 && lastEventRead < now
-                ? Math.max(0, lastEventRead - 1000) : now - 8 * 60 * 60 * 1000L;
+        // A startup scan covers only the recent 30 minutes, not the prior 8 hours.
+        // Subsequent reads are incremental. Scan off the main/UI thread.
+        long begin = lastEventRead > 0L && lastEventRead < now
+                ? lastEventRead : Math.max(0L, now - 30L * 60L * 1000L);
         UsageEvents events = mgr.queryEvents(begin, now);
-        if (events == null) return foregroundPackage;
+        if (events == null) return new ForegroundState(foregroundPackage, foregroundSinceMillis);
         UsageEvents.Event event = new UsageEvents.Event();
         while (events.hasNextEvent()) {
             events.getNextEvent(event);
             int type = event.getEventType();
             if (type == UsageEvents.Event.ACTIVITY_RESUMED
                     || type == UsageEvents.Event.MOVE_TO_FOREGROUND) {
-                foregroundPackage = event.getPackageName();
-            } else if (type == UsageEvents.Event.ACTIVITY_PAUSED
-                    || type == UsageEvents.Event.MOVE_TO_BACKGROUND) {
-                if (event.getPackageName().equals(foregroundPackage)) foregroundPackage = null;
+                String packageName = event.getPackageName();
+                if (!java.util.Objects.equals(packageName, foregroundPackage)) {
+                    foregroundPackage = packageName;
+                    foregroundSinceMillis = event.getTimeStamp();
+                }
             }
+            // Do not clear a package on ACTIVITY_PAUSED. Android can pause one
+            // activity while another activity of the SAME package has resumed.
+            // The next ACTIVITY_RESUMED of a different package identifies a switch.
         }
         lastEventRead = now;
-        return foregroundPackage;
+        return new ForegroundState(foregroundPackage, foregroundSinceMillis);
+    }
+
+    public static String currentForeground(Context context) {
+        return currentForegroundState(context).packageName;
+    }
+
+    /** Single-app usage count, avoiding constructing a JSON map for every monitor tick. */
+    public static long getUsageMinutes(Context context, String packageName) {
+        if (packageName == null || !MainActivity.hasUsagePermission(context)) return 0L;
+        UsageStatsManager mgr = (UsageStatsManager) context.getSystemService(Context.USAGE_STATS_SERVICE);
+        if (mgr == null) return 0L;
+        Calendar today = Calendar.getInstance();
+        today.set(Calendar.HOUR_OF_DAY, 0);
+        today.set(Calendar.MINUTE, 0);
+        today.set(Calendar.SECOND, 0);
+        today.set(Calendar.MILLISECOND, 0);
+        List<UsageStats> stats = mgr.queryUsageStats(
+                UsageStatsManager.INTERVAL_DAILY, today.getTimeInMillis(), System.currentTimeMillis());
+        if (stats == null) return 0L;
+        long totalMillis = 0L;
+        for (UsageStats usage : stats) {
+            if (packageName.equals(usage.getPackageName()))
+                totalMillis += Math.max(0L, usage.getTotalTimeInForeground());
+        }
+        return totalMillis / 60000L;
     }
 
     public static String classify(Context context, String packageName) {
