@@ -7,11 +7,15 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.Context;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
+import android.os.SystemClock;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.HashMap;
@@ -20,6 +24,8 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.Locale;
 import java.text.SimpleDateFormat;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class MonitorService extends Service {
     private static final String MONITOR_CHANNEL = "godseng_monitor";
@@ -47,13 +53,166 @@ public final class MonitorService extends Service {
                 .setContentIntent(content).setOngoing(true).build();
         ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).notify(ONGOING_ID, notification);
     }
-    private final Runnable tick = new Runnable() {
-        @Override public void run() {
-            try { evaluate(); }
-            catch (Exception e) { android.util.Log.w("GodsengAlarm", "monitor tick failed", e); }
-            handler.postDelayed(this, 12000);
+    private static final String ONE_MINUTE_CHANNEL = "godseng_one_minute";
+    private static final int ONE_MINUTE_ID = 5003;
+    private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private boolean polling;
+    private boolean destroyed;
+    private boolean screenInteractive = true;
+    private boolean lastWasMonitored;
+    private long screenResumedAtMillis;
+    private long lastSessionElapsedMs;
+    private String reminderSessionKey;
+    private boolean reminderSentForSession;
+    // These cached fields are accessed only by the single usage worker.
+    private String cachedUsagePackage;
+    private String cachedUsageDay;
+    private long cachedUsageAtElapsed;
+    private long cachedUsageMinutes;
+    private boolean cachedUsageValid;
+
+    private static final class PollResult {
+        final JSONObject state;
+        final UsageEngine.ForegroundState foreground;
+        final boolean permitted;
+        final boolean freeDay;
+        final boolean monitored;
+        final long minutes;
+        PollResult(JSONObject state, UsageEngine.ForegroundState foreground,
+                   boolean permitted, boolean freeDay, boolean monitored, long minutes) {
+            this.state = state;
+            this.foreground = foreground;
+            this.permitted = permitted;
+            this.freeDay = freeDay;
+            this.monitored = monitored;
+            this.minutes = minutes;
+        }
+    }
+
+    private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            String action = intent == null ? null : intent.getAction();
+            if (Intent.ACTION_SCREEN_OFF.equals(action)) {
+                screenInteractive = false;
+                handler.removeCallbacks(tick);
+                if (lastWasMonitored && lastCategory != null) resetStage(lastCategory);
+                lastWasMonitored = false;
+                lastCategory = null;
+                reminderSessionKey = null;
+                reminderSentForSession = false;
+                if (overlay != null) overlay.dismiss();
+                if (pendingHeads != null)
+                    ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).cancel(WARNING_ID);
+                pendingHeads = null;
+            } else if (Intent.ACTION_SCREEN_ON.equals(action) ||
+                    Intent.ACTION_USER_PRESENT.equals(action)) {
+                screenInteractive = true;
+                screenResumedAtMillis = System.currentTimeMillis();
+                requestPollNow();
+            }
         }
     };
+
+    private final Runnable tick = new Runnable() {
+        @Override public void run() {
+            if (destroyed || !screenInteractive || polling) return;
+            polling = true;
+            try {
+                worker.execute(() -> {
+                    PollResult result = null;
+                    try { result = collectPoll(); }
+                    catch (Exception error) {
+                        android.util.Log.w("GodsengAlarm", "Usage query failed", error);
+                    }
+                    final PollResult delivered = result;
+                    handler.post(() -> {
+                        polling = false;
+                        if (destroyed || !screenInteractive) return;
+                        boolean monitored = false;
+                        long nextDelay = MonitorPolicy.IDLE_POLL_MS;
+                        if (delivered != null) {
+                            try {
+                                monitored = evaluate(delivered);
+                                if (delivered.freeDay) {
+                                    // No foreground queries until tomorrow unless settings change.
+                                    nextDelay = millisUntilTomorrow();
+                                } else {
+                                    nextDelay = MonitorPolicy.nextPollDelay(
+                                            screenInteractive, monitored, lastSessionElapsedMs);
+                                }
+                            } catch (Exception error) {
+                                android.util.Log.w("GodsengAlarm", "Monitor evaluation failed", error);
+                            }
+                        }
+                        if (nextDelay >= 0L) handler.postDelayed(tick, nextDelay);
+                    });
+                });
+            } catch (Exception error) {
+                polling = false;
+                android.util.Log.w("GodsengAlarm", "Usage worker unavailable", error);
+                handler.postDelayed(this, MonitorPolicy.IDLE_POLL_MS);
+            }
+        }
+    };
+
+    private void requestPollNow() {
+        handler.removeCallbacks(tick);
+        if (!destroyed && screenInteractive && !polling) handler.post(tick);
+    }
+
+    private static long millisUntilTomorrow() {
+        Calendar tomorrow = Calendar.getInstance();
+        tomorrow.add(Calendar.DAY_OF_MONTH, 1);
+        tomorrow.set(Calendar.HOUR_OF_DAY, 0);
+        tomorrow.set(Calendar.MINUTE, 0);
+        tomorrow.set(Calendar.SECOND, 0);
+        tomorrow.set(Calendar.MILLISECOND, 0);
+        return Math.max(1_000L, tomorrow.getTimeInMillis() - System.currentTimeMillis());
+    }
+
+    private static boolean enabled(JSONObject state, String packageName) {
+        if (packageName == null) return false;
+        JSONObject on = state.optJSONObject("on");
+        if (on == null || !on.optBoolean(packageName, false)) return false;
+        JSONArray removed = state.optJSONArray("removed");
+        if (removed != null) for (int i = 0; i < removed.length(); i++)
+            if (packageName.equals(removed.optString(i))) return false;
+        return true;
+    }
+
+    private PollResult collectPoll() {
+        JSONObject saved = state();
+        if (!MainActivity.hasUsagePermission(this))
+            return new PollResult(saved, null, false, false, false, 0L);
+        boolean freeDay = isFreeDayToday(saved);
+        if (freeDay) return new PollResult(saved, null, true, true, false, 0L);
+        UsageEngine.ForegroundState foreground = UsageEngine.currentForegroundState(this);
+        String pkg = foreground.packageName;
+        boolean monitored = !getPackageName().equals(pkg) && enabled(saved, pkg);
+        long minutes = 0L;
+        if (monitored) {
+            JSONObject configs = saved.optJSONObject("cfg");
+            JSONObject cfg = configs == null ? null : configs.optJSONObject(pkg);
+            if (cfg == null) cfg = new JSONObject();
+            boolean afterConfigured = hasMethod(saved, cfg, "after");
+            if (afterConfigured) {
+                long nowElapsed = SystemClock.elapsedRealtime();
+                String today = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
+                boolean matching = cachedUsageValid &&
+                        pkg.equals(cachedUsagePackage) && today.equals(cachedUsageDay);
+                if (MonitorPolicy.shouldRefreshDailyUsage(
+                        afterConfigured, matching, cachedUsageAtElapsed, nowElapsed)) {
+                    cachedUsageMinutes = UsageEngine.getUsageMinutes(this, pkg);
+                    cachedUsageAtElapsed = nowElapsed;
+                    cachedUsagePackage = pkg;
+                    cachedUsageDay = today;
+                    cachedUsageValid = true;
+                }
+                minutes = cachedUsageMinutes;
+            }
+        }
+        return new PollResult(saved, foreground, true, false, monitored, minutes);
+    }
 
     @Override public void onCreate() {
         super.onCreate();
