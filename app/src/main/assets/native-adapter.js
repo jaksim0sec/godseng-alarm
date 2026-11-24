@@ -224,11 +224,21 @@
     });
   }
   let pending = 0;
+  let lastMonitorSignature = null;
+  const monitorSignature = () => JSON.stringify(
+    Object.keys(S.on).filter(id => S.on[id] && !S.removed.has(id)).sort()
+  );
   const save = () => {
     clearTimeout(pending);
     pending = setTimeout(() => {
       Android.saveState(snapshot());
-      if (Object.values(S.on).some(Boolean)) Android.startMonitoring();
+      const signature = monitorSignature();
+      // Both turning on AND turning off the last app must update the service.
+      // No repeated service start on ordinary scrolling or text edits.
+      if (signature !== lastMonitorSignature) {
+        lastMonitorSignature = signature;
+        Android.startMonitoring();
+      }
     }, 440);
   };
   document.addEventListener('click', save, false);
