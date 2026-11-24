@@ -24,6 +24,7 @@ public final class WarningOverlay {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private WebView surface;
     private String currentCategory;
+    private boolean previewShowing;
 
     public WarningOverlay(Context context, ActionListener listener) {
         this.context = context;
@@ -33,10 +34,27 @@ public final class WarningOverlay {
     public boolean isShowing() { return surface != null; }
 
     public void show(String category, int stage, int minutes, JSONObject savedState) {
+        showInternal(category, stage, minutes, savedState, false);
+    }
+
+    /** Replay in the identical OS overlay surface, using unsaved editor settings. */
+    public void showPreview(String category, int stage, int minutes, JSONObject draftConfig) {
+        JSONObject previewState = new JSONObject();
+        try {
+            JSONObject allConfigs = new JSONObject();
+            allConfigs.put(category, draftConfig);
+            previewState.put("cfg", allConfigs);
+        } catch (Exception ignored) {}
+        showInternal(category, stage, minutes, previewState, true);
+    }
+
+    private void showInternal(String category, int stage, int minutes,
+                              JSONObject savedState, boolean preview) {
         handler.post(() -> {
             dismissNow();
             if (!Settings.canDrawOverlays(context)) return;
             currentCategory = category;
+            previewShowing = preview;
             WebView view = new WebView(context);
             surface = view;
             view.setBackgroundColor(Color.TRANSPARENT);
@@ -108,6 +126,7 @@ public final class WarningOverlay {
         WebView v = surface;
         surface = null;
         currentCategory = null;
+        previewShowing = false;
         try {
             ((WindowManager) context.getSystemService(Context.WINDOW_SERVICE)).removeView(v);
         } catch (Exception ignored) { }
@@ -120,7 +139,12 @@ public final class WarningOverlay {
         WarningBridge(String category) { this.category = category; }
         @JavascriptInterface public void action(String action) {
             handler.post(() -> {
-                if (category.equals(currentCategory)) listener.onAction(action, category);
+                if (!category.equals(currentCategory)) return;
+                if (previewShowing) {
+                    // The original warning animation and action handlers still ran;
+                    // only the persistent stage update / real HOME navigation are skipped.
+                    if (!"home".equals(action)) dismissNow();
+                } else listener.onAction(action, category);
             });
         }
     }
