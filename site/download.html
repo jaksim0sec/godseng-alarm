@@ -57,7 +57,7 @@ function chooseLanguage(lang,remember=false){
  if(remember){try{localStorage.setItem('godseng-language',lang)}catch{}try{const url=new URL(location.href);url.searchParams.set('lang',lang);history.replaceState(null,'',url)}catch{}}
 }
 let preferred=new URLSearchParams(location.search).get('lang');if(!preferred){try{preferred=localStorage.getItem('godseng-language')}catch{}}if(!preferred)preferred=(navigator.language||'ko').split('-')[0];
-localeSelect.addEventListener('change',()=>chooseLanguage(localeSelect.value,true));chooseLanguage(preferred);
+localeSelect.addEventListener('change',()=>chooseLanguage(localeSelect.value,true));chooseLanguage(preferred,true);
 </script>
 <script>
 /* Public Android release bridge: the source repository stays private.
