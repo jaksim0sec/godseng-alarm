@@ -367,7 +367,12 @@
   window.NativeApp = {
     refreshUsage, syncPermissions, refreshInstalledApps:requestCatalog,
     receiveCatalog, receiveAppIcon, observeIcons:watchIcons,
-    persistState:()=>Android.saveState(snapshot())
+    persistState:()=>Android.saveState(snapshot()),
+    applyMonitoringChange:()=>{
+      Android.saveState(snapshot());
+      lastMonitorSignature=monitorSignature();
+      Android.startMonitoring();
+    }
   };
   requestCatalog();
   setTimeout(refreshUsage, 1200);
