@@ -89,12 +89,18 @@ public final class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        if (browser != null) browser.onResume();
         handler.postDelayed(() -> {
             if (pageLoaded && browser != null) {
                 browser.evaluateJavascript("window.NativeApp && (NativeApp.refreshUsage(), NativeApp.syncPermissions && NativeApp.syncPermissions(), NativeApp.syncFreeDay && NativeApp.syncFreeDay())", null);
             }
             maybeStartMonitor();
         }, 650);
+    }
+
+    @Override protected void onPause() {
+        if (browser != null) browser.onPause();
+        super.onPause();
     }
 
     private void maybeStartMonitor() {
