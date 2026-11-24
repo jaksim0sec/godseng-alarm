@@ -214,7 +214,17 @@
     toast(isFreeDay()?'오늘 하루 감시를 쉬어요':'프리데이를 종료했어요');
   };
   paintFreeDay();
-  setInterval(syncFreeDay,60000);
+  // One timer near local midnight instead of a perpetual once-per-minute wakeup.
+  function scheduleNextMidnight() {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    setTimeout(() => { syncFreeDay(); scheduleNextMidnight(); },
+      Math.max(1000, next.getTime() - now.getTime() + 250));
+  }
+  scheduleNextMidnight();
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) syncFreeDay();
+  });
 
   // All original stage-order, nudge, left-swipe removal, drag and tap-to-restore
   // interactions remain owned by the original HTML. We only add a sibling switch.
