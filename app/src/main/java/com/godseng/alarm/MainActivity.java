@@ -104,17 +104,27 @@ public final class MainActivity extends Activity {
     }
 
     private void maybeStartMonitor() {
-        if (!hasUsagePermission(this)) return;
+        if (!hasUsagePermission(this)) {
+            stopService(new Intent(this, MonitorService.class));
+            return;
+        }
         String value = getPreferences(MODE_PRIVATE).getString("state", "");
         boolean active = false;
         try {
             JSONObject state = new JSONObject(value);
             if (state.optBoolean("initialized", false)) {
                 JSONObject enabled = state.optJSONObject("on");
+                org.json.JSONArray removed = state.optJSONArray("removed");
                 if (enabled != null) {
                     java.util.Iterator<String> keys = enabled.keys();
                     while (keys.hasNext()) {
-                        if (enabled.optBoolean(keys.next(), false)) { active = true; break; }
+                        String packageId = keys.next();
+                        if (!enabled.optBoolean(packageId, false)) continue;
+                        boolean isRemoved = false;
+                        if (removed != null) for (int i = 0; i < removed.length(); i++) {
+                            if (packageId.equals(removed.optString(i))) {isRemoved = true; break;}
+                        }
+                        if (!isRemoved) {active = true; break;}
                     }
                 }
             }
