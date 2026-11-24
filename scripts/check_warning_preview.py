@@ -13,7 +13,7 @@ checks={
  'editor bridge script loaded': 'injectJavascriptAsset("warning-preview.js")' in a,
  'native preview bridge': 'previewWarning(String' in a,
  'stage 1-3 shared overlay renderer': 'showPreview(' in o and 'triggerWarning(app,{preview:true' in o,
- 'no preview stage changes': 'if (preview)' in o and 'listener.onAction(action, category)' in o,
+ 'no preview stage changes': 'if (previewShowing)' in o and 'listener.onAction(action, category)' in o,
  'stage 0 uses same notification builder': n.exists() and 'WarningNotifications.show(' in s and 'WarningNotifications.show(' in a,
  'preview action never starts monitor service': 'previewDismiss' in b,
  'preview button uses OS bridge not a mock UI': j.exists() and 'Android.previewWarning(' in j.read_text(encoding='utf8'),
