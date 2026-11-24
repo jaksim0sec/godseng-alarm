@@ -176,6 +176,8 @@
     S.on[id]=active;
     if (!active) delete S.stageByApp[id];
     reconcileHome();
+    // Persist before asking Android to stop/start, even if the app is backgrounded immediately.
+    if (window.NativeApp && NativeApp.applyMonitoringChange) NativeApp.applyMonitoringChange();
     if (previous && !active) showUndo(id);
     else if (lastDisabledId===id) closeUndo();
   };
