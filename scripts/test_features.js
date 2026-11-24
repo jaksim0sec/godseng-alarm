@@ -57,7 +57,7 @@ const document={
   body:el('body'),head:{appendChild(node){css+=node.textContent}},
   getElementById:id=>nodes.get(id)||[...nodes.values()].find(n=>n.id===id)||el(id),
   createElement:()=>el('temporary-'+Math.random()),
-  querySelectorAll:()=>[]
+  querySelectorAll:()=>[], addEventListener(){}
 };
 const S={sel:new Set(),cfg:{},methods:new Set(),on:{a:true,b:true},
   removed:new Set(),pin:new Set(),stageByApp:{},filter:'on',freeDayDate:null};
