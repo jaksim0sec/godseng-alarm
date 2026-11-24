@@ -20,11 +20,16 @@ jobs:
       - run: python3 scripts/check_parity.py
       - run: python3 scripts/check_native_integrations.py
       - run: python3 scripts/check_features.py
+      - run: python3 scripts/check_monitor_performance.py
       - run: python3 scripts/check_inline_js.py
       - run: node --check app/src/main/assets/native-adapter.js
       - run: node --check app/src/main/assets/features.js
       - run: node scripts/test_native_adapter.js
       - run: node scripts/test_features.js
+      - run: |
+          mkdir -p "$RUNNER_TEMP/monitor-policy"
+          javac -d "$RUNNER_TEMP/monitor-policy" app/src/main/java/com/godseng/alarm/MonitorPolicy.java scripts/MonitorPolicyTest.java
+          java -cp "$RUNNER_TEMP/monitor-policy" MonitorPolicyTest
       - run: gradle --no-daemon :app:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
