@@ -57,3 +57,14 @@ Android Studio에서 이 저장소를 열고 Android SDK 35와 JDK 17로 `assemb
 검증 도구: `python3 scripts/check_features.py` 및 `node scripts/test_features.js` (기존 어댑터·HTML 무손실 검사와 함께 GitHub Actions에서 실행).
 
 **검증 범위**: 정적 연결 및 모의 DOM 동작 테스트를 통과했으나, APK 빌드/Android 기기 직접 테스트 결과가 확인되기 전에는 실제 기기 동작을 보증하지 않음.
+
+## 1분 알림 / 백그라운드 배터리 개선 (2026-11-24)
+
+- 등록해 **활성**으로 둔 앱을 연속 사용한 지 **1분** 지나면 일반 알림을 한 번 표시. 앱을 떠나고 다시 진입하면 새 세션. Free Day에는 발송하지 않음
+- 감시 정책: 화면 꺼짐에는 조회 중지, 화면 켜짐·비감시 앱에서 30초 주기, 감시 앱에서 12초 주기(1분 경계에 맞춰 조절)
+- Android 사용 통계 조회를 백그라운드 단일 작업자에서 처리. 앱별 시간 제한 조건이 있는 경우에만 당일 합산 기록을 최대 1분 간격으로 조회
+- 마지막 활성 앱을 비활성화하면 저장 후 포그라운드 서비스를 종료하도록 개선, 원본 WebView의 450ms 권한 반복 확인 제거
+- `MonitorPolicyTest` 15개 테스트와 `check_monitor_performance.py` 정적 회귀 검사 추가
+- **아직 Android APK 컴파일·실기기 배터리 사용량은 측정하지 못함**. 일정/알림 전달 시점은 제조사 절전 정책의 영향을 받을 수 있음
+
+원인 분석, 상세 구현 구조, ADB 측정 계획: [배터리 최적화 문서](docs/BATTERY_OPTIMIZATION.md).
