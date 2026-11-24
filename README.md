@@ -68,3 +68,15 @@ Android Studio에서 이 저장소를 열고 Android SDK 35와 JDK 17로 `assemb
 - **아직 Android APK 컴파일·실기기 배터리 사용량은 측정하지 못함**. 일정/알림 전달 시점은 제조사 절전 정책의 영향을 받을 수 있음
 
 원인 분석, 상세 구현 구조, ADB 측정 계획: [배터리 최적화 문서](docs/BATTERY_OPTIMIZATION.md).
+
+## 경고 커스텀 편집 예시 재생: 실제 Android 발동 경로 재사용 (2026-11-24)
+
+- 앱의 `s-edit` 화면 `#pv-play`를 누르면 **실제 Android 경고 시스템**을 실행한다. HTML 내부의 `triggerWarning(... sandbox:true)` 기반 가상 시연은 앱에서는 캡처 단계에서 차단된다.
+- **0단계**는 실경고와 같은 Android `Notification.Builder` / `godseng_warning` 채널을 통해 알림으로 재생한다. `WarningNotifications` 공용 생성기는 실제 경고와 미리보기에 모두 사용된다.
+- **1·2·3단계**는 실제 서비스와 동일한 `WarningOverlay`의 `WindowManager.TYPE_APPLICATION_OVERLAY` WebView를 실행한다. 별도 화면/도형/타이머 구현 없이 `index.html`의 실제 `triggerWarning`, `showWatch`, `showPopup`, `showCountdown`을 사용한다.
+- 편집 중 입력한 **미저장 문구**와 앱 이름·사용시간·제한시간·시간대 등의 토큰, 진동 설정은 임시 설정으로 넘겨 그대로 재생된다.
+- 재생 알림을 닫거나 오버레이에서 무시·나가기를 눌러도 경고 단계를 올리거나 진짜 HOME으로 보내지 않는다. 편집 중이던 화면·설정도 유지된다.
+- 시스템 알림 또는 다른 앱 위에 표시 권한이 없으면 **가짜 UI로 대체하지 않고** 권한 확인을 안내한다. 알림의 실제 헤드업 노출은 Android 기기/알림 채널 설정에 따른다.
+- 기존 `app/src/main/assets/index.html`의 시연 구현과 편집 UI는 소실 방지를 위해 수정하지 않았고, APK에만 `warning-preview.js` 네이티브 재생 어댑터를 추가했다.
+
+검증: `node scripts/test_warning_preview.js`, `python3 scripts/check_warning_preview.py` 및 기존 전체 회귀 테스트. Android 기기에서 직접 경고를 띄우는 시각 검증은 아직 별개다.
