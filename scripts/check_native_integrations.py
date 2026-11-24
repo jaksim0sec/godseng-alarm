@@ -31,7 +31,7 @@ conditions = {
     "permission checked before completion": "if (!allGranted(status) || finished) return;" in adapter,
     "permission preview timer replaced": "byId('b-start').onclick = () =>" in adapter,
     "live per-package usage": "times.merge(packageId," in usage,
-    "package monitoring": "String category = getPackageName().equals(pkg) ? null : pkg;" in monitor,
+    "package monitoring": "String category = poll.foreground == null ? null : poll.foreground.packageName;" in monitor,
     "warning for real app": "APPS.splice(0,APPS.length,app);" in overlay,
 }
 for label, good in conditions.items():
