@@ -223,6 +223,10 @@ public final class MonitorService extends Service {
                 "갓생 경고", NotificationManager.IMPORTANCE_HIGH);
         warnings.setDescription("선택한 앱 사용 조건을 만족하면 경고");
         nm.createNotificationChannel(warnings);
+        NotificationChannel minute = new NotificationChannel(ONE_MINUTE_CHANNEL,
+                "앱 사용 1분 알림", NotificationManager.IMPORTANCE_DEFAULT);
+        minute.setDescription("활성화한 앱을 1분 연속 사용하면 한 번 알려줍니다");
+        nm.createNotificationChannel(minute);
         Intent open = new Intent(this, MainActivity.class);
         PendingIntent content = PendingIntent.getActivity(this, 1, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
@@ -237,20 +241,33 @@ public final class MonitorService extends Service {
             startForeground(ONGOING_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
         } else startForeground(ONGOING_ID, notification);
         overlay = new WarningOverlay(this, this::handleAction);
-        handler.post(tick);
+        IntentFilter screenFilter = new IntentFilter();
+        screenFilter.addAction(Intent.ACTION_SCREEN_ON);
+        screenFilter.addAction(Intent.ACTION_SCREEN_OFF);
+        screenFilter.addAction(Intent.ACTION_USER_PRESENT);
+        if (Build.VERSION.SDK_INT >= 33)
+            registerReceiver(screenReceiver, screenFilter, Context.RECEIVER_NOT_EXPORTED);
+        else registerReceiver(screenReceiver, screenFilter);
+        PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
+        screenInteractive = power == null || power.isInteractive();
+        screenResumedAtMillis = System.currentTimeMillis();
+        if (screenInteractive) requestPollNow();
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent != null && "com.godseng.alarm.WARNING_ACTION".equals(intent.getAction())) {
+        String action = intent == null ? null : intent.getAction();
+        if ("com.godseng.alarm.WARNING_ACTION".equals(action)) {
             handleAction(intent.getStringExtra("action"), intent.getStringExtra("category"));
-        }
-        if (intent != null && "com.godseng.alarm.FREE_DAY_CHANGED".equals(intent.getAction())) {
-            if (overlay != null) overlay.dismiss();
-            pendingHeads = null;
-            lastCategory = null;
-            ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).cancel(WARNING_ID);
-            handler.removeCallbacks(tick);
-            handler.post(tick);
+        } else {
+            if ("com.godseng.alarm.FREE_DAY_CHANGED".equals(action)) {
+                if (overlay != null) overlay.dismiss();
+                pendingHeads = null;
+                lastCategory = null;
+                lastWasMonitored = false;
+                ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).cancel(WARNING_ID);
+            }
+            // A settings change can resume monitoring even during a Free Day.
+            requestPollNow();
         }
         return START_STICKY;
     }
@@ -324,38 +341,65 @@ public final class MonitorService extends Service {
         return today.equals(saved.optString("freeDayDate", ""));
     }
 
-    private void evaluate() {
-        if (!MainActivity.hasUsagePermission(this)) return;
-        JSONObject s = state();
-        updateMonitorNotification(isFreeDayToday(s));
-        if (isFreeDayToday(s)) {
+    private boolean evaluate(PollResult poll) {
+        lastSessionElapsedMs = 0L;
+        if (!poll.permitted) {
+            // Revoked usage access must not leave a spinning foreground service.
+            stopSelf();
+            return false;
+        }
+        updateMonitorNotification(poll.freeDay);
+        if (poll.freeDay) {
             if (overlay != null) overlay.dismiss();
-            if (pendingHeads != null) {
+            if (pendingHeads != null)
                 ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).cancel(WARNING_ID);
-            }
             pendingHeads = null;
             lastCategory = null;
-            return;
+            lastWasMonitored = false;
+            return false;
         }
-        String pkg = UsageEngine.currentForeground(this);
-        // State keys now are real package IDs, not predefined category names.
-        String category = getPackageName().equals(pkg) ? null : pkg;
+        String category = poll.foreground == null ? null : poll.foreground.packageName;
+        if (getPackageName().equals(category)) category = null;
         if (lastCategory != null && !lastCategory.equals(category)) {
-            resetStage(lastCategory);
+            // Only configured apps have a warning stage worth resetting.
+            if (lastWasMonitored) resetStage(lastCategory);
             if (overlay != null) overlay.dismiss();
+            if (pendingHeads != null)
+                ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).cancel(WARNING_ID);
             pendingHeads = null;
         }
         lastCategory = category;
-        if (category == null || !UsageEngine.isEnabled(this, category)) return;
+        lastWasMonitored = poll.monitored;
+        if (category == null || !poll.monitored) return false;
+
+        long now = System.currentTimeMillis();
+        long since = poll.foreground.sinceMillis;
+        if (since <= 0L || since > now) since = now;
+        since = Math.max(since, screenResumedAtMillis);
+        lastSessionElapsedMs = Math.max(0L, now - since);
+        String sessionKey = category + ":" + since;
+        if (!sessionKey.equals(reminderSessionKey)) {
+            reminderSessionKey = sessionKey;
+            reminderSentForSession = sessionKey.equals(
+                    getSharedPreferences("MonitorSession", MODE_PRIVATE)
+                            .getString("lastMinuteReminder", ""));
+        }
+        if (MonitorPolicy.shouldNotifyMinute(true, reminderSentForSession, lastSessionElapsedMs)) {
+            reminderSentForSession = true;
+            getSharedPreferences("MonitorSession", MODE_PRIVATE).edit()
+                    .putString("lastMinuteReminder", sessionKey).apply();
+            showOneMinuteReminder(category);
+        }
+
+        JSONObject s = poll.state;
         JSONObject configs = s.optJSONObject("cfg");
         JSONObject cfg = configs == null ? null : configs.optJSONObject(category);
         if (cfg == null) cfg = new JSONObject();
-        long minutes = sLong(UsageEngine.getUsageJson(this), category);
-        if (!condition(s, cfg, minutes)) return;
-        long now = System.currentTimeMillis();
-        if (now - warnedAt.getOrDefault(category, 0L) < 120000) return;
-        if (overlay != null && overlay.isShowing()) return;
-        if (pendingHeads != null) return;
+        // A time-of-day-only rule never queries aggregated daily usage stats.
+        if (!condition(s, cfg, poll.minutes)) return true;
+        if (now - warnedAt.getOrDefault(category, 0L) < 120000L) return true;
+        if (overlay != null && overlay.isShowing()) return true;
+        if (pendingHeads != null) return true;
         warnedAt.put(category, now);
         JSONObject stages = s.optJSONObject("stageByApp");
         int step = stages == null ? 0 : stages.optInt(category, 0);
@@ -364,11 +408,27 @@ public final class MonitorService extends Service {
         if (stage == 0 || !android.provider.Settings.canDrawOverlays(this)) {
             showHeads(category, message);
         } else {
-            overlay.show(category, stage, (int) minutes, s);
+            overlay.show(category, stage, (int) poll.minutes, s);
         }
+        return true;
     }
 
-    private static long sLong(JSONObject json, String key) { return json.optLong(key, 0); }
+    private void showOneMinuteReminder(String packageName) {
+        Intent open = new Intent(this, MainActivity.class);
+        PendingIntent content = PendingIntent.getActivity(this, 110, open,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        String appName = InstalledApps.label(this, packageName);
+        Notification notification = new Notification.Builder(this, ONE_MINUTE_CHANNEL)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setContentTitle("앱 사용 1분")
+                .setContentText(appName + "을(를) 1분째 사용하고 있어요")
+                .setCategory(Notification.CATEGORY_REMINDER)
+                .setContentIntent(content)
+                .setAutoCancel(true)
+                .build();
+        ((NotificationManager) getSystemService(NOTIFICATION_SERVICE))
+                .notify(ONE_MINUTE_ID, notification);
+    }
 
     private PendingIntent actionIntent(String category, String action, int code) {
         Intent i = new Intent(this, WarningActionReceiver.class);
@@ -460,7 +520,10 @@ public final class MonitorService extends Service {
     }
 
     @Override public void onDestroy() {
+        destroyed = true;
         handler.removeCallbacksAndMessages(null);
+        unregisterReceiver(screenReceiver);
+        worker.shutdownNow();
         if (overlay != null) overlay.dismiss();
         super.onDestroy();
     }
