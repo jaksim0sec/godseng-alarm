@@ -148,3 +148,26 @@ Android APK는 GitHub Actions `Android APK` 워크플로로 빌드하도록 설�
 **미검증**: 실제 APK 빌드 성공, Android 단말의 1분 알림 지연·1분 이하 재진입 방지, CPU wakeup 횟수·Wh 전력 사용량. 정적 테스트·순수 Java 단언이 OS 실행을 보장하지 않음.
 
 자세한 병목 조사와 기기별 측정 절차는 `docs/BATTERY_OPTIMIZATION.md` 참고.
+
+## 6차 변경: 경고 문구 편집 예시 재생을 실제 발동 경로로 통일
+
+### 원인
+- 원본 `#pv-play`는 `triggerWarning(appOf(T.id),{stage:EK,cfg:{...T,msg:m},sandbox:true})`를 호출해 주 앱의 HTML 페이지 안에서 효과를 시뮬레이션했다.
+- 실제 앱 동작은 **0단계는 Android 알림**, **1~3단계는 `WindowManager.TYPE_APPLICATION_OVERLAY` + 별도 원본 HTML WebView**이므로, 재생과 실발동이 서로 다른 표시 경로를 가졌다.
+
+### 변경
+- 편집기의 기존 재생 버튼에 캡처 단계 이벤트 리스너를 추가하여 원본 가상 재생 이벤트를 차단. 새 UI 없이 `Android.previewWarning` 호출
+- 해당 단계, 설치 앱 ID, 현재 사용시간, 현재 **미저장 편집 문구와 단계 설정**을 JSON으로 전달. 영구 설정에는 저장하지 않음
+- 0단계는 `WarningNotifications.show()`를 실경고와 예시에 공용 사용. Native `Notification.Builder`·아이콘·제목·채널·버튼 일치. 기존 실경고의 0단계 문구도 HTML `msgFor`와 동일한 토큰 해석으로 정정
+- 1~3단계는 `WarningOverlay.showInternal()` 공용 구현으로 같은 WebView와 원본 `triggerWarning` 실행. 다른 CSS·도형·가짜 애니메이션 없음
+- 예시 닫기/무시/나가기 시 실제 모니터 `stageByApp` 변경·홈 강제 이동 차단. 0단계 알림의 두 버튼도 서비스 시작 없이 예시 알림만 닫음
+- 원본 앱용 `index.html` SHA `8a92577808a1b94d8b446fd97bebf22dfed1e3bd` 유지, 편집기 스와이프·문구 토큰·카운트다운 핸들러 보존
+
+### 검증
+- [x] 4개 단계 모두 네이티브 재생 요청으로 전달되는 JS 회귀 시뮬레이션
+- [x] 클릭 전파 중단으로 기존 가상 재생이 이중 발동하지 않음
+- [x] 미저장 문구 및 진동·앱 설정 전달, 편집 상태 불변
+- [x] 권한 거부 시 가상 재생으로 폴백하지 않음
+- [x] 0단계 공용 알림 렌더러, 1~3단계 공용 WindowManager 오버레이 경로 정적 검토
+- [x] 기존 HTML 무변경
+- [ ] APK 전체 컴파일 및 실제 Android 시스템 알림/오버레이 육안 검증
