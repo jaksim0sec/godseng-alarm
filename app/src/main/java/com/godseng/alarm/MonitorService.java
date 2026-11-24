@@ -414,7 +414,7 @@ public final class MonitorService extends Service {
         JSONObject stages = s.optJSONObject("stageByApp");
         int step = stages == null ? 0 : stages.optInt(category, 0);
         int stage = indexOfStage(orderOf(s, cfg), step);
-        String message = InstalledApps.label(this, category) + " 사용 시간을 확인해 봐";
+        String message = WarningNotifications.message(this, category, stage, poll.minutes, cfg);
         if (stage == 0 || !android.provider.Settings.canDrawOverlays(this)) {
             showHeads(category, message);
         } else {
@@ -440,34 +440,10 @@ public final class MonitorService extends Service {
                 .notify(ONE_MINUTE_ID, notification);
     }
 
-    private PendingIntent actionIntent(String category, String action, int code) {
-        Intent i = new Intent(this, WarningActionReceiver.class);
-        i.setAction("com.godseng.alarm.WARNING_ACTION");
-        i.putExtra("category", category);
-        i.putExtra("action", action);
-        return PendingIntent.getBroadcast(this, code, i,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-    }
-
     private void showHeads(String category, String message) {
         pendingHeads = category;
-        Notification notification = new Notification.Builder(this, WARNING_CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_dialog_alert)
-                .setContentTitle("갓생알리미")
-                .setContentText(message)
-                .setStyle(new Notification.BigTextStyle().bigText(message))
-                .setCategory(Notification.CATEGORY_REMINDER)
-                .setPriority(Notification.PRIORITY_HIGH)
-                .setAutoCancel(true)
-                .addAction(new Notification.Action.Builder(
-                        android.R.drawable.ic_menu_close_clear_cancel, "무시",
-                        actionIntent(category, "ignore", 21)).build())
-                .addAction(new Notification.Action.Builder(
-                        android.R.drawable.ic_menu_view, "앱에서 나가기",
-                        actionIntent(category, "stop", 22)).build())
-                .build();
-        ((NotificationManager) getSystemService(NOTIFICATION_SERVICE))
-                .notify(WARNING_ID, notification);
+        // Stage 0 uses the exact same Android Notification.Builder in preview.
+        WarningNotifications.show(this, category, message, false);
         handler.postDelayed(() -> {
             if (category.equals(pendingHeads)) handleAction("ignore", category);
         }, 6500);
